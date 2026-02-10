@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
@@ -34,26 +37,42 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    // Support both formats:
-    // Bot format:    { type: "task_update", payload: {...} }
-    // Legacy format: { action: "create_task", data: {...} }
+    // Support both formats
     const type = body.type || body.action;
     const payload = body.payload || body.data;
 
     try {
         switch (type) {
-            // ─── TASK OPERATIONS ───
+            // ─── TASK: CREATE OR UPDATE ───
             case "task_update":
             case "create_task": {
+                // If payload has an `id`, update the existing task
+                if (payload.id) {
+                    const updates: Record<string, any> = {};
+                    if (payload.status) updates.status = TASK_STATUS_MAP[payload.status] || payload.status;
+                    if (payload.title) updates.title = payload.title;
+                    if (payload.description) updates.description = payload.description;
+                    if (payload.priority) updates.priority = payload.priority;
+                    if (payload.assignedAgent !== undefined) updates.assignee = payload.assignedAgent;
+                    if (payload.assignee !== undefined) updates.assignee = payload.assignee;
+
+                    await convex.mutation(api.tasks.update, {
+                        id: payload.id as Id<"tasks">,
+                        ...updates,
+                    });
+                    return ok({ success: true, type, action: "updated", id: payload.id });
+                }
+
+                // No id → create new task
                 const status = TASK_STATUS_MAP[payload.status] || "inbox";
-                await convex.mutation(api.tasks.create, {
+                const taskId = await convex.mutation(api.tasks.create, {
                     title: payload.title,
-                    description: payload.description || payload.notes,
+                    description: payload.description || payload.notes || undefined,
                     priority: payload.priority || "medium",
-                    assignee: payload.assignedAgent || payload.assignee,
+                    assignee: payload.assignedAgent || payload.assignee || undefined,
                     status: status as any,
                 });
-                break;
+                return ok({ success: true, type, action: "created", id: taskId });
             }
 
             case "update_task": {
@@ -62,23 +81,40 @@ export async function POST(request: NextRequest) {
                 if (payload.title) updates.title = payload.title;
                 if (payload.description) updates.description = payload.description;
                 if (payload.priority) updates.priority = payload.priority;
-                if (payload.assignedAgent || payload.assignee) updates.assignee = payload.assignedAgent || payload.assignee;
+                if (payload.assignedAgent !== undefined) updates.assignee = payload.assignedAgent;
+                if (payload.assignee !== undefined) updates.assignee = payload.assignee;
+
                 await convex.mutation(api.tasks.update, {
-                    id: payload.id,
+                    id: payload.id as Id<"tasks">,
                     ...updates,
                 });
-                break;
+                return ok({ success: true, type, action: "updated" });
             }
 
-            // ─── AGENT OPERATIONS ───
+            // ─── AGENT STATUS ───
             case "agent_update":
             case "update_agent": {
+                const agentName = payload.name || payload.id;
                 const agentStatus = AGENT_STATUS_MAP[payload.status] || "online";
+
                 await convex.mutation(api.agents.updateStatus, {
-                    name: payload.name || payload.id,
+                    name: agentName,
                     status: agentStatus as any,
                 });
-                break;
+                return ok({ success: true, type, agent: agentName });
+            }
+
+            // ─── SQUAD CHAT ───
+            case "chat_message":
+            case "post_chat": {
+                const agentName = payload.agent || payload.agentId || payload.name || "System";
+                const content = payload.content || payload.message;
+
+                await convex.mutation(api.squadChat.post, {
+                    agent: agentName,
+                    content: content,
+                });
+                return ok({ success: true, type, agent: agentName });
             }
 
             // ─── ACTIVITY LOG ───
@@ -87,6 +123,7 @@ export async function POST(request: NextRequest) {
                 const activityTypeMap: Record<string, string> = {
                     task_created: "task_created",
                     task_completed: "task_updated",
+                    task_updated: "task_updated",
                     agent_assigned: "task_updated",
                     status_change: "task_updated",
                     message: "message_sent",
@@ -96,16 +133,7 @@ export async function POST(request: NextRequest) {
                     agent: payload.agentId || payload.agent || "System",
                     message: payload.message,
                 });
-                break;
-            }
-
-            // ─── CHAT ───
-            case "post_chat": {
-                await convex.mutation(api.squadChat.post, {
-                    agent: payload.agent,
-                    content: payload.content,
-                });
-                break;
+                return ok({ success: true, type });
             }
 
             // ─── DELIVERABLES ───
@@ -114,24 +142,42 @@ export async function POST(request: NextRequest) {
                     title: payload.title,
                     content: payload.content,
                     type: payload.type || "report",
-                    agent: payload.agent,
+                    agent: payload.agent || payload.agentId || "System",
                 });
-                break;
+                return ok({ success: true, type });
             }
 
             default:
                 return NextResponse.json(
-                    { error: `Unknown type: ${type}`, supported: ["task_update", "update_task", "agent_update", "activity", "post_chat", "add_deliverable"] },
-                    { status: 400 }
+                    {
+                        error: `Unknown type: ${type}`,
+                        supported: [
+                            "task_update — create or update a task (include id to update)",
+                            "agent_update — update agent status",
+                            "chat_message — post to squad chat",
+                            "activity — log activity",
+                            "add_deliverable — add a deliverable",
+                        ],
+                    },
+                    { status: 400, headers: noCacheHeaders() }
                 );
         }
-
-        return NextResponse.json({ success: true, type });
     } catch (error: any) {
         console.error("Webhook error:", error);
         return NextResponse.json(
-            { error: "Internal error", details: error.message },
-            { status: 500 }
+            { error: "Internal error", details: error.message, type, payload },
+            { status: 500, headers: noCacheHeaders() }
         );
     }
+}
+
+function ok(data: any) {
+    return NextResponse.json(data, { headers: noCacheHeaders() });
+}
+
+function noCacheHeaders() {
+    return {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Vercel-CDN-Cache-Control": "no-store",
+    };
 }
