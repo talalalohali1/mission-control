@@ -137,13 +137,9 @@ export default function Dashboard() {
                     <div className="flex-1 overflow-y-auto">
                         <AgentStatus />
                     </div>
-                    {/* Squad Chat at bottom of sidebar */}
-                    <div className="border-t border-mc-border p-4 max-h-[400px] flex flex-col">
-                        <SquadChat />
-                    </div>
                 </aside>
 
-                {/* CENTER — Mission Queue (Kanban) */}
+                {/* CENTER — Mission Queue + Squad Chat */}
                 <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
                     {/* Queue Header */}
                     <div className="flex items-center justify-between px-5 py-3 border-b border-mc-border">
@@ -161,8 +157,15 @@ export default function Dashboard() {
                     </div>
 
                     {/* Kanban Board */}
-                    <div className="flex-1 overflow-x-auto overflow-y-auto p-5">
+                    <div className="flex-1 overflow-x-auto overflow-y-auto p-5 min-h-0">
                         <TaskBoard onTaskClick={(id) => setSelectedTaskId(id)} />
+                    </div>
+
+                    {/* Squad Chat — Full Width Bottom Panel */}
+                    <div className="border-t border-mc-border bg-mc-card flex-shrink-0" style={{ height: "280px" }}>
+                        <div className="h-full p-4">
+                            <SquadChat />
+                        </div>
                     </div>
                 </main>
 

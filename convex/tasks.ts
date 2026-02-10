@@ -156,3 +156,22 @@ export const getRecent = query({
             .take(5);
     },
 });
+
+// Delete a task
+export const deleteTask = mutation({
+    args: { id: v.id("tasks") },
+    handler: async (ctx, args) => {
+        const task = await ctx.db.get(args.id);
+        if (!task) throw new Error("Task not found");
+
+        await ctx.db.delete(args.id);
+
+        // Log activity
+        await ctx.db.insert("activities", {
+            type: "task_updated",
+            agent: task.assignee || "System",
+            message: `Deleted task: ${task.title}`,
+            createdAt: Date.now(),
+        });
+    },
+});

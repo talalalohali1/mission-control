@@ -52,7 +52,6 @@ export default function SquadChat() {
             <div
                 ref={scrollRef}
                 className="flex-1 overflow-y-auto space-y-2.5 mb-3 min-h-0"
-                style={{ maxHeight: "300px" }}
             >
                 {!sorted ? (
                     <div className="space-y-3">

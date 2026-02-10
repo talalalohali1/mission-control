@@ -147,12 +147,21 @@ export async function POST(request: NextRequest) {
                 return ok({ success: true, type });
             }
 
+            // ─── DELETE TASK ───
+            case "task_delete": {
+                await convex.mutation(api.tasks.deleteTask, {
+                    id: payload.id as Id<"tasks">,
+                });
+                return ok({ success: true, type, action: "deleted", id: payload.id });
+            }
+
             default:
                 return NextResponse.json(
                     {
                         error: `Unknown type: ${type}`,
                         supported: [
                             "task_update — create or update a task (include id to update)",
+                            "task_delete — delete a task by id",
                             "agent_update — update agent status",
                             "chat_message — post to squad chat",
                             "activity — log activity",
