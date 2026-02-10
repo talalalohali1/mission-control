@@ -1,6 +1,9 @@
 "use client";
 
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { getAgentColor } from "@/lib/utils";
+import { Id } from "@/convex/_generated/dataModel";
 
 const PRIORITY_COLORS: Record<string, string> = {
     high: "#e74c3c",
@@ -31,19 +34,39 @@ interface TaskCardProps {
 }
 
 export default function TaskCard({ task, onClick }: TaskCardProps) {
+    const deleteTask = useMutation(api.tasks.deleteTask);
     const borderColor = STATUS_BORDER_COLORS[task.status] || "#d4d1cc";
     const tags = generateTags(task.title, task.description);
+
+    const handleDelete = async (e: React.MouseEvent) => {
+        e.stopPropagation(); // Don't open task detail
+        if (confirm(`Delete "${task.title}"?`)) {
+            await deleteTask({ id: task._id as Id<"tasks"> });
+        }
+    };
 
     return (
         <button
             onClick={onClick}
-            className="w-full text-left bg-mc-card rounded-lg p-3.5 task-card cursor-pointer border border-mc-border relative overflow-hidden"
+            className="w-full text-left bg-mc-card rounded-lg p-3.5 task-card cursor-pointer border border-mc-border relative overflow-hidden group"
         >
             {/* Colored left border */}
             <div
                 className="absolute left-0 top-0 bottom-0 w-1 rounded-l-lg"
                 style={{ backgroundColor: borderColor }}
             />
+
+            {/* Delete button — shows on hover */}
+            <div
+                onClick={handleDelete}
+                className="absolute top-2 right-2 w-6 h-6 rounded flex items-center justify-center text-mc-text-muted hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all cursor-pointer z-10"
+                title="Delete task"
+            >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
+            </div>
 
             <div className="pl-2">
                 {/* Priority indicator */}
@@ -55,7 +78,7 @@ export default function TaskCard({ task, onClick }: TaskCardProps) {
                 )}
 
                 {/* Title */}
-                <h4 className="text-[13px] font-semibold text-mc-text leading-snug mb-1">
+                <h4 className="text-[13px] font-semibold text-mc-text leading-snug mb-1 pr-6">
                     {task.title}
                 </h4>
 

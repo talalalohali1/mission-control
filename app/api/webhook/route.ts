@@ -104,17 +104,29 @@ export async function POST(request: NextRequest) {
                 return ok({ success: true, type, agent: agentName });
             }
 
-            // ─── SQUAD CHAT ───
+            // ─── SQUAD CHAT (with optional task linking) ───
             case "chat_message":
             case "post_chat": {
                 const agentName = payload.agent || payload.agentId || payload.name || "System";
                 const content = payload.content || payload.message;
 
+                // Always post to squad chat feed
                 await convex.mutation(api.squadChat.post, {
                     agent: agentName,
                     content: content,
                 });
-                return ok({ success: true, type, agent: agentName });
+
+                // If taskId provided, also save as a task comment (shows on task detail)
+                if (payload.taskId) {
+                    await convex.mutation(api.messages.create, {
+                        taskId: payload.taskId as Id<"tasks">,
+                        agent: agentName,
+                        content: content,
+                        type: "comment" as const,
+                    });
+                }
+
+                return ok({ success: true, type, agent: agentName, taskLinked: !!payload.taskId });
             }
 
             // ─── ACTIVITY LOG ───

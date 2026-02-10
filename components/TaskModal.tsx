@@ -171,8 +171,8 @@ export default function TaskModal({ taskId, onClose }: TaskModalProps) {
                                     onClick={() => handleStatusChange(s.value)}
                                     disabled={isUpdating || task.status === s.value}
                                     className={`text-xs px-3 py-1.5 rounded-lg border transition-all font-medium ${task.status === s.value
-                                            ? "border-mc-text bg-mc-text text-white"
-                                            : "border-mc-border text-mc-text-secondary hover:text-mc-text hover:border-mc-border-dark"
+                                        ? "border-mc-text bg-mc-text text-white"
+                                        : "border-mc-border text-mc-text-secondary hover:text-mc-text hover:border-mc-border-dark"
                                         } disabled:opacity-50`}
                                 >
                                     {s.label}
@@ -198,32 +198,48 @@ export default function TaskModal({ taskId, onClose }: TaskModalProps) {
                         )}
                     </div>
 
-                    {/* Comments */}
+                    {/* Agent Collaboration Timeline */}
                     <div>
                         <h3 className="text-[11px] font-bold text-mc-text-muted mb-3 uppercase tracking-widest">
-                            Comments ({task.messages?.length || 0})
+                            Agent Work Timeline ({task.messages?.length || 0})
                         </h3>
-                        <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
+                        <div className="relative mb-4 max-h-72 overflow-y-auto">
                             {task.messages?.length === 0 && (
-                                <p className="text-mc-text-muted text-sm">No comments yet.</p>
+                                <p className="text-mc-text-muted text-sm py-2">No agent activity on this task yet.</p>
                             )}
-                            {task.messages?.map((msg) => (
-                                <div key={msg._id} className="bg-mc-sidebar rounded-lg p-3">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <span
-                                            className="text-sm font-semibold"
-                                            style={{ color: getAgentColor(msg.agent) }}
-                                        >
-                                            {msg.agent}
-                                        </span>
-                                        <span className="text-mc-text-muted text-xs">
-                                            {new Date(msg.createdAt).toLocaleTimeString([], {
-                                                hour: "2-digit",
-                                                minute: "2-digit",
-                                            })}
-                                        </span>
+                            {task.messages?.map((msg, i) => (
+                                <div key={msg._id} className="flex gap-3 relative">
+                                    {/* Connecting line */}
+                                    {i < (task.messages?.length || 0) - 1 && (
+                                        <div className="absolute left-[11px] top-7 bottom-0 w-px bg-mc-border" />
+                                    )}
+                                    {/* Avatar */}
+                                    <div
+                                        className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 mt-0.5 z-10"
+                                        style={{ backgroundColor: getAgentColor(msg.agent) }}
+                                    >
+                                        {msg.agent[0]}
                                     </div>
-                                    <p className="text-sm text-mc-text-secondary">{msg.content}</p>
+                                    {/* Content */}
+                                    <div className="flex-1 pb-4">
+                                        <div className="flex items-baseline gap-2 mb-0.5">
+                                            <span
+                                                className="text-sm font-semibold"
+                                                style={{ color: getAgentColor(msg.agent) }}
+                                            >
+                                                {msg.agent}
+                                            </span>
+                                            <span className="text-[10px] text-mc-text-muted">
+                                                {new Date(msg.createdAt).toLocaleTimeString([], {
+                                                    hour: "2-digit",
+                                                    minute: "2-digit",
+                                                })}
+                                            </span>
+                                        </div>
+                                        <p className="text-sm text-mc-text-secondary leading-relaxed bg-mc-sidebar rounded-lg px-3 py-2">
+                                            {msg.content}
+                                        </p>
+                                    </div>
                                 </div>
                             ))}
                         </div>
