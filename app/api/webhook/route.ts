@@ -2,7 +2,28 @@ import { NextRequest, NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 
+export const dynamic = "force-dynamic";
+
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+
+// Map bot statuses → Convex statuses
+const TASK_STATUS_MAP: Record<string, string> = {
+    active: "in_progress",
+    queued: "inbox",
+    completed: "done",
+    blocked: "blocked",
+    inbox: "inbox",
+    in_progress: "in_progress",
+    review: "review",
+    done: "done",
+};
+
+const AGENT_STATUS_MAP: Record<string, string> = {
+    online: "online",
+    busy: "busy",
+    idle: "online",
+    offline: "offline",
+};
 
 export async function POST(request: NextRequest) {
     // Validate API key
@@ -12,67 +33,105 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { action, data } = body;
+
+    // Support both formats:
+    // Bot format:    { type: "task_update", payload: {...} }
+    // Legacy format: { action: "create_task", data: {...} }
+    const type = body.type || body.action;
+    const payload = body.payload || body.data;
 
     try {
-        switch (action) {
-            case "create_task":
+        switch (type) {
+            // ─── TASK OPERATIONS ───
+            case "task_update":
+            case "create_task": {
+                const status = TASK_STATUS_MAP[payload.status] || "inbox";
                 await convex.mutation(api.tasks.create, {
-                    title: data.title,
-                    description: data.description,
-                    priority: data.priority || "medium",
-                    assignee: data.assignee,
-                    status: data.status || "inbox",
+                    title: payload.title,
+                    description: payload.description || payload.notes,
+                    priority: payload.priority || "medium",
+                    assignee: payload.assignedAgent || payload.assignee,
+                    status: status as any,
                 });
                 break;
+            }
 
-            case "update_task":
+            case "update_task": {
+                const updates: Record<string, any> = {};
+                if (payload.status) updates.status = TASK_STATUS_MAP[payload.status] || payload.status;
+                if (payload.title) updates.title = payload.title;
+                if (payload.description) updates.description = payload.description;
+                if (payload.priority) updates.priority = payload.priority;
+                if (payload.assignedAgent || payload.assignee) updates.assignee = payload.assignedAgent || payload.assignee;
                 await convex.mutation(api.tasks.update, {
-                    id: data.id,
-                    ...data.updates,
+                    id: payload.id,
+                    ...updates,
                 });
                 break;
+            }
 
-            case "post_chat":
-                await convex.mutation(api.squadChat.post, {
-                    agent: data.agent,
-                    content: data.content,
-                });
-                break;
-
-            case "add_deliverable":
-                await convex.mutation(api.deliverables.create, {
-                    title: data.title,
-                    content: data.content,
-                    type: data.type,
-                    taskId: data.taskId,
-                    agent: data.agent,
-                });
-                break;
-
-            case "update_agent":
+            // ─── AGENT OPERATIONS ───
+            case "agent_update":
+            case "update_agent": {
+                const agentStatus = AGENT_STATUS_MAP[payload.status] || "online";
                 await convex.mutation(api.agents.updateStatus, {
-                    name: data.name,
-                    status: data.status,
+                    name: payload.name || payload.id,
+                    status: agentStatus as any,
                 });
                 break;
+            }
 
-            case "add_activity":
+            // ─── ACTIVITY LOG ───
+            case "activity":
+            case "add_activity": {
+                const activityTypeMap: Record<string, string> = {
+                    task_created: "task_created",
+                    task_completed: "task_updated",
+                    agent_assigned: "task_updated",
+                    status_change: "task_updated",
+                    message: "message_sent",
+                };
                 await convex.mutation(api.activities.create, {
-                    type: data.type,
-                    agent: data.agent,
-                    taskId: data.taskId,
-                    message: data.message,
+                    type: (activityTypeMap[payload.type] || "task_updated") as any,
+                    agent: payload.agentId || payload.agent || "System",
+                    message: payload.message,
                 });
                 break;
+            }
+
+            // ─── CHAT ───
+            case "post_chat": {
+                await convex.mutation(api.squadChat.post, {
+                    agent: payload.agent,
+                    content: payload.content,
+                });
+                break;
+            }
+
+            // ─── DELIVERABLES ───
+            case "add_deliverable": {
+                await convex.mutation(api.deliverables.create, {
+                    title: payload.title,
+                    content: payload.content,
+                    type: payload.type || "report",
+                    agent: payload.agent,
+                });
+                break;
+            }
 
             default:
-                return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+                return NextResponse.json(
+                    { error: `Unknown type: ${type}`, supported: ["task_update", "update_task", "agent_update", "activity", "post_chat", "add_deliverable"] },
+                    { status: 400 }
+                );
         }
 
-        return NextResponse.json({ success: true });
-    } catch (error) {
+        return NextResponse.json({ success: true, type });
+    } catch (error: any) {
         console.error("Webhook error:", error);
-        return NextResponse.json({ error: "Internal error" }, { status: 500 });
+        return NextResponse.json(
+            { error: "Internal error", details: error.message },
+            { status: 500 }
+        );
     }
 }
