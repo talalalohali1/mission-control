@@ -5,8 +5,6 @@ import { api } from "@/convex/_generated/api";
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 export async function GET() {
-    const tasks = await convex.query(api.tasks.getRecent, {
-        minutes: 5,
-    });
+    const tasks = await convex.query(api.tasks.getRecent);
     return NextResponse.json(tasks);
 }
