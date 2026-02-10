@@ -145,3 +145,15 @@ export const update = mutation({
         });
     },
 });
+
+// Get tasks created in the last N minutes (for polling)
+export const getRecent = query({
+    args: { minutes: v.number() },
+    handler: async (ctx, args) => {
+        const cutoff = Date.now() - args.minutes * 60 * 1000;
+        return await ctx.db
+            .query("tasks")
+            .filter((q) => q.gte(q.field("createdAt"), cutoff))
+            .collect();
+    },
+});
